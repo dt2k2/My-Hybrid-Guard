@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="vi">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>URL Risk Scanner</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="{{ request.url_for('static', path='css/index.css') }}">
+</head>
+
+<body>
+    <main class="wrap">
+        <section class="panel">
+            <h1 class="hero-title">URL Risk Scanner</h1>
+            <p class="hero-sub">
+                Nhập URL để kiểm tra mức độ rủi ro phishing. Hệ thống kết hợp AI với kiểm tra DNS, IP, SSL, tuổi domain
+                và tín hiệu nội dung trang.
+            </p>
+
+            <div class="form-section">
+                <div class="form-grid">
+                    <div class="field">
+                        <label class="field-label" for="urlInput">URL Cần Kiểm Tra</label>
+                        <input id="urlInput" class="url-input" type="text" autocomplete="off"
+                            placeholder="github.com hoặc https://example.com/login">
+                        <div class="field-help">Nhập domain trần hoặc URL đầy đủ. Hệ thống sẽ tự chuẩn hóa.</div>
+                    </div>
+
+                    <div class="field">
+                        <label class="field-label" for="modeSelect">Mô Hình</label>
+                        <select id="modeSelect" class="mode-select" aria-label="Chọn mode mô hình">
+                            {% for mode in available_modes %}
+                            <option value="{{ mode }}" {% if mode==default_mode %}selected{% endif %}>{{ mode|upper }}{%
+                                if
+                                mode|lower == 'dl' %} (Testing){% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="field-help">RF ổn định, DL linh hoạt hơn.</div>
+                    </div>
+
+                    <div class="field">
+                        <label class="field-label" for="analyzeBtn">Thực Thi</label>
+                        <button id="analyzeBtn" class="btn" type="button">Phân tích</button>
+                        <div class="field-help">Enter để chạy nhanh.</div>
+                    </div>
+                </div>
+                <div class="form-options-row">
+                    <label class="recheck-toggle" for="recheckToggle">
+                        <input id="recheckToggle" type="checkbox">
+                        Recheck live (bỏ cache)
+                    </label>
+                </div>
+                <div class="meta-note">Gợi ý: Chuyển mode để so sánh kết quả từ các mô hình AI khác nhau.</div>
+                <div id="errorBox" class="error hidden"></div>
+            </div>
+
+            <div id="resultPanel" class="result hidden">
+                <div class="summary-grid">
+                    <article class="metric">
+                        <div class="label">Mức cảnh báo <span class="hint" tabindex="0"
+                                data-tip="Kết luận cuối cùng sau khi cộng điểm từ AI và các kiểm tra bên ngoài.">?</span>
+                        </div>
+                        <div id="riskTier" class="value"></div>
+                    </article>
+                    <article class="metric">
+                        <div class="label">Xác suất độc hại cuối <span class="hint" tabindex="0"
+                                data-tip="Xác suất sau khi hợp nhất kết quả AI + DNS/SSL/domain age/content.">?</span>
+                        </div>
+                        <div id="finalPercent" class="value"></div>
+                    </article>
+                    <article class="metric">
+                        <div class="label">Xác suất từ AI gốc <span class="hint" tabindex="0"
+                                data-tip="Xác suất do mô hình AI trả về trước khi áp dụng các luật bổ sung.">?</span>
+                        </div>
+                        <div id="basePercent" class="value"></div>
+                    </article>
+                    <article class="metric">
+                        <div class="label">Chính sách TLD <span class="hint" tabindex="0"
+                                data-tip="Trusted TLD có thể giảm mức kiểm tra sâu. Non-trusted TLD thường bị kiểm tra đầy đủ.">?</span>
+                        </div>
+                        <div id="tldPolicy" class="value" style="font-size:15px"></div>
+                    </article>
+                </div>
+
+                <div class="split">
+                    <div class="box">
+                        <h3>Tóm tắt phân tích</h3>
+                        <table>
+                            <tbody id="summaryBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="box">
+                        <h3>Biểu đồ xác suất</h3>
+                        <canvas id="riskChart" height="185"></canvas>
+                    </div>
+                </div>
+
+                <div class="table-grid">
+                    <div class="box">
+                        <h3>Domain / DNS / SSL</h3>
+                        <table>
+                            <tbody id="domainChecksBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="box">
+                        <h3>Tuổi domain / HTTP content</h3>
+                        <table>
+                            <tbody id="ageContentBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="box" style="margin-bottom: 12px;">
+                    <h3>Top tín hiệu đặc trưng (AI)</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width:22%">Feature</th>
+                                <th style="width:18%">Value</th>
+                                <th style="width:18%">Importance</th>
+                                <th>Debug Score</th>
+                            </tr>
+                        </thead>
+                        <tbody id="featureBody"></tbody>
+                    </table>
+                </div>
+
+                <div class="box">
+                    <h3>Lý do hợp nhất kết quả</h3>
+                    <ul id="reasonsList"></ul>
+                </div>
+
+                <div class="foot-note">
+                    Lưu ý: kết quả này phục vụ hỗ trợ phân tích rủi ro, không thay thế hoàn toàn cho hệ thống bảo mật
+                    chuyên dụng trong production.
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <div id="appTooltip" class="app-tooltip" role="tooltip" aria-hidden="true"></div>
+
+    <script>
+        const analyzeBtn = document.getElementById("analyzeBtn");
+        const urlInput = document.getElementById("urlInput");
+        const modeSelect = document.getElementById("modeSelect");
+        const resultPanel = document.getElementById("resultPanel");
+        const errorBox = document.getElementById("errorBox");
+        const appTooltip = document.getElementById("appTooltip");
+        const recheckToggle = document.getElementById("recheckToggle");
+        let riskChart = null;
+        let activeHint = null;
+
+        function pct(v) { return (Number(v) * 100).toFixed(2) + "%"; }
+        function safe(v) { return v === null || v === undefined || v === "" ? "N/A" : String(v); }
+        function vnBool(v) { return v === true ? "Có" : (v === false ? "Không" : "N/A"); }
+        function escapeHtml(text) {
+            return String(text)
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#39;");
+        }
+
+        function placeTooltip(x, y) {
+            const margin = 12;
+            const rect = appTooltip.getBoundingClientRect();
+            let left = x + 14;
+            let top = y + 14;
+
+            if (left + rect.width > window.innerWidth - margin) {
+                left = x - rect.width - 14;
+            }
+            if (top + rect.height > window.innerHeight - margin) {
+                top = y - rect.height - 14;
+            }
+            left = Math.max(margin, left);
+            top = Math.max(margin, top);
+            appTooltip.style.left = `${left}px`;
+            appTooltip.style.top = `${top}px`;
+        }
+
+        function showTooltip(hintEl, x, y) {
+            const message = hintEl.getAttribute("data-tip") || hintEl.getAttribute("title");
+            if (!message) return;
+            appTooltip.textContent = message;
+            appTooltip.classList.add("show");
+            appTooltip.setAttribute("aria-hidden", "false");
+            activeHint = hintEl;
+            placeTooltip(x, y);
+        }
+
+        function hideTooltip() {
+            appTooltip.classList.remove("show");
+            appTooltip.setAttribute("aria-hidden", "true");
+            activeHint = null;
+        }
+
+        function setRows(targetId, rows) {
+            const body = document.getElementById(targetId);
+            body.innerHTML = rows.map(([k, v, tip]) => {
+                const th = tip
+                    ? `${k} <span class="hint" tabindex="0" data-tip="${escapeHtml(tip)}">?</span>`
+                    : k;
+                return `<tr><th>${th}</th><td>${safe(v)}</td></tr>`;
+            }).join("");
+        }
+
+        document.addEventListener("mouseover", (event) => {
+            const hint = event.target.closest(".hint");
+            if (!hint) return;
+            showTooltip(hint, event.clientX, event.clientY);
+        });
+
+        document.addEventListener("mousemove", (event) => {
+            if (!activeHint) return;
+            placeTooltip(event.clientX, event.clientY);
+        });
+
+        document.addEventListener("mouseout", (event) => {
+            const hint = event.target.closest(".hint");
+            if (!hint) return;
+            hideTooltip();
+        });
+
+        document.addEventListener("focusin", (event) => {
+            const hint = event.target.closest(".hint");
+            if (!hint) return;
+            const rect = hint.getBoundingClientRect();
+            showTooltip(hint, rect.left + rect.width / 2, rect.top + rect.height / 2);
+        });
+
+        document.addEventListener("focusout", (event) => {
+            const hint = event.target.closest(".hint");
+            if (!hint) return;
+            hideTooltip();
+        });
+
+        document.addEventListener("click", (event) => {
+            const hint = event.target.closest(".hint");
+            if (!hint) {
+                hideTooltip();
+                return;
+            }
+            if (activeHint === hint) {
+                hideTooltip();
+                return;
+            }
+            const rect = hint.getBoundingClientRect();
+            showTooltip(hint, rect.left + rect.width / 2, rect.bottom);
+        });
+
+        function setList(targetId, values) {
+            const el = document.getElementById(targetId);
+            const list = values && values.length ? values : ["Không có lý do bổ sung đáng kể."];
+            el.innerHTML = list.map(v => `<li>${safe(v)}</li>`).join("");
+        }
+
+        function formatDelta(baseProbability, finalProbability) {
+            const delta = Number(finalProbability || 0) - Number(baseProbability || 0);
+            const sign = delta > 0 ? "+" : "";
+            return `${sign}${delta.toFixed(4)} (${sign}${(delta * 100).toFixed(2)}%)`;
+        }
+
+        function buildFallbackFusionReasons(data) {
+            const checks = data.checks || {};
+            const age = checks.domain_age || {};
+            const http = checks.http || {};
+            const dns = checks.dns || {};
+            const ssl = checks.ssl || {};
+            const policy = data.policy || {};
+
+            const fallback = [];
+            const delta = Number(data.final_malicious_probability || 0) - Number(data.base_malicious_probability || 0);
+            fallback.push(`Không có fusion reasons cụ thể từ backend. Delta hợp nhất hiện tại: ${delta >= 0 ? "+" : ""}${delta.toFixed(4)}.`);
+
+            if (age.error) {
+                fallback.push(`Domain age check không dùng được: ${age.error}`);
+            }
+            if (http.error) {
+                fallback.push(`HTTP content check lỗi: ${http.error}`);
+            }
+
+            fallback.push(`TLD policy: ${safe(policy.tld_policy)} (.${safe(policy.tld)}), full_checks=${vnBool(policy.full_checks)}.`);
+            fallback.push(`Nguồn dữ liệu: DNS cache=${vnBool(dns.from_cache)}, SSL cache=${vnBool(ssl.from_cache)}, DomainAge cache=${vnBool(age.from_cache)}, HTTP cache=${vnBool(http.from_cache)}.`);
+            return fallback;
+        }
+
+        function renderFusionReasons(data) {
+            const reasons = data.fusion_reasons || [];
+            if (reasons.length) {
+                setList("reasonsList", reasons);
+                return;
+            }
+            setList("reasonsList", buildFallbackFusionReasons(data));
+        }
+
+        urlInput.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                analyzeBtn.click();
+            }
+        });
+
+        function updateChart(data) {
+            const ctx = document.getElementById("riskChart").getContext("2d");
+            if (riskChart) riskChart.destroy();
+            riskChart = new Chart(ctx, {
+                type: "bar",
+                data: {
+                    labels: ["AI gốc", "Sau hợp nhất", "Ngưỡng Suspicious", "Ngưỡng Malicious"],
+                    datasets: [{
+                        label: "Xác suất",
+                        data: [
+                            Number(data.base_malicious_probability || 0),
+                            Number(data.final_malicious_probability || 0),
+                            Number(data.thresholds?.suspicious || 0.25),
+                            Number(data.thresholds?.malicious || 0.5),
+                        ],
+                        backgroundColor: ["#38bdf8", "#f59e0b", "#22c55e", "#ef4444"],
+                        borderRadius: 10,
+                    }]
+                },
+                options: {
+                    animation: { duration: 680, easing: "easeOutQuart" },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => `${(ctx.raw * 100).toFixed(2)}%`
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 1,
+                            ticks: { callback: (v) => `${(v * 100).toFixed(0)}%`, color: "#9fb2c7" },
+                            grid: { color: "rgba(255,255,255,0.1)" },
+                        },
+                        x: {
+                            ticks: { color: "#cbd5e1" },
+                            grid: { display: false },
+                        }
+                    }
+                }
+            });
+        }
+
+        analyzeBtn.addEventListener("click", async () => {
+            const url = urlInput.value.trim();
+            const mode = modeSelect.value;
+            const recheck = Boolean(recheckToggle?.checked);
+            if (!url) {
+                errorBox.textContent = "Vui lòng nhập URL trước khi phân tích.";
+                errorBox.classList.remove("hidden");
+                urlInput.focus();
+                return;
+            }
+
+            analyzeBtn.disabled = true;
+            analyzeBtn.textContent = "Đang phân tích...";
+            errorBox.classList.add("hidden");
+
+            try {
+                const response = await fetch("/api/analyze", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ url, mode, recheck })
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || "Không thể phân tích URL");
+
+                resultPanel.classList.remove("hidden");
+                document.getElementById("riskTier").textContent = data.risk_tier;
+                document.getElementById("riskTier").className = "value tier-" + data.final_prediction;
+                document.getElementById("finalPercent").textContent = pct(data.final_malicious_probability);
+                document.getElementById("basePercent").textContent = pct(data.base_malicious_probability);
+                document.getElementById("tldPolicy").textContent = `${safe(data.policy.tld_policy)} (.${safe(data.policy.tld)})`;
+
+                setRows("summaryBody", [
+                    ["URL đầu vào", data.url, "URL mà người dùng gửi để phân tích."],
+                    ["URL chuẩn hóa", data.normalized_url, "Dạng URL đã được chuẩn hóa để phân tích và gọi external checks."],
+                    ["Mode", (data.mode || "N/A").toUpperCase(), "Mode mô hình người dùng đã chọn trên UI."],
+                    ["Model type", (data.model_type || "N/A").toUpperCase(), "Loại model backend đang dùng thực tế cho mode này."],
+                    ["Recheck live", vnBool(data.policy?.recheck), "Nếu Có: bỏ qua cache và truy vấn lại DNS/SSL/RDAP/HTTP."],
+                    ["Dự đoán từ AI", data.model_prediction, "Kết quả dự đoán trực tiếp từ mô hình học máy."],
+                    ["Dự đoán cuối", data.final_prediction, "Kết quả sau khi kết hợp AI và các kiểm tra kỹ thuật."],
+                    ["Delta hợp nhất", formatDelta(data.base_malicious_probability, data.final_malicious_probability), "Độ thay đổi xác suất sau khi áp dụng policy + external checks."],
+                    ["Số lý do hợp nhất", (data.fusion_reasons || []).length, "Số lý do backend trả về để giải thích việc điều chỉnh."],
+                    ["Full checks", vnBool(data.policy?.full_checks), "Cho biết pipeline có chạy đầy đủ domain age + HTTP checks hay không."],
+                    ["Risk triggers", (data.risk_triggers || []).join(" | ") || "Không có", "Các tín hiệu kích hoạt kiểm tra sâu."],
+                    ["Ngưỡng Suspicious", data.thresholds.suspicious, "Nếu xác suất >= ngưỡng này thì xếp nghi ngờ."],
+                    ["Ngưỡng Malicious", data.thresholds.malicious, "Nếu xác suất >= ngưỡng này thì xếp độc hại."],
+                ]);
+
+                const dns = data.checks.dns || {};
+                const ssl = data.checks.ssl || {};
+                setRows("domainChecksBody", [
+                    ["DNS resolve", vnBool(dns.resolved), "Domain có phân giải ra IP hay không."],
+                    ["IP", (dns.ips || []).join(", ") || "N/A", "Danh sách IP thu được từ DNS lookup."],
+                    ["Công cụ DNS", dns.tool, "Công cụ hệ thống đã dùng để truy vấn DNS."],
+                    ["DNS từ cache", vnBool(dns.from_cache), "Kết quả DNS lấy từ cache hay truy vấn mới."],
+                    ["SSL khả dụng", vnBool(ssl.available), "Website có SSL hợp lệ hay không."],
+                    ["SSL issuer", ssl.issuer, "Tổ chức cấp chứng chỉ SSL."],
+                    ["Hạn SSL", ssl.not_after, "Thời điểm chứng chỉ SSL hết hạn."],
+                    ["Số ngày còn lại", ssl.days_until_expiration, "Số ngày còn lại trước khi SSL hết hạn."],
+                    ["SSL từ cache", vnBool(ssl.from_cache), "Kết quả SSL lấy từ cache hay truy vấn mới."],
+                    ["Lỗi SSL", ssl.error, "Lỗi khi kiểm tra SSL (nếu có)."],
+                ]);
+
+                const age = data.checks.domain_age || {};
+                const http = data.checks.http || {};
+                setRows("ageContentBody", [
+                    ["Ngày đăng ký", age.registered_at, "Thời điểm domain được đăng ký."],
+                    ["Tuổi domain (ngày)", age.days_since_registration, "Số ngày tồn tại của domain."],
+                    ["Ngày hết hạn", age.expires_at, "Thời điểm domain hết hạn."],
+                    ["Nguồn tuổi domain", age.source, "Nguồn dữ liệu RDAP dùng để tra cứu tuổi domain."],
+                    ["Domain age từ cache", vnBool(age.from_cache), "Kết quả tuổi domain lấy từ cache hay truy vấn mới."],
+                    ["Lỗi tuổi domain", age.error, "Lỗi khi truy vấn RDAP (nếu có)."],
+                    ["HTTP status", http.status_code, "Mã phản hồi HTTP của trang."],
+                    ["Redirect hops", http.redirect_hops, "Số lần chuyển hướng khi truy cập URL."],
+                    ["Từ khóa nhạy cảm", (http.keyword_hits || []).join(", ") || "Không có", "Các từ khóa nhạy cảm phát hiện trong nội dung."],
+                    ["Form mật khẩu", vnBool(http.password_form_detected), "Trang có xuất hiện input password hay không."],
+                    ["HTTP từ cache", vnBool(http.from_cache), "Kết quả HTTP/content lấy từ cache hay truy vấn mới."],
+                    ["Lỗi HTTP", http.error, "Lỗi khi thu thập thông tin HTTP/content."],
+                ]);
+
+                const fBody = document.getElementById("featureBody");
+                fBody.innerHTML = (data.top_debug_features || []).map(f =>
+                    `<tr><td>${safe(f.feature)}</td><td>${Number(f.value).toFixed(4)}</td><td>${Number(f.importance).toFixed(4)}</td><td>${Number(f.debug_score).toFixed(4)}</td></tr>`
+                ).join("");
+
+                renderFusionReasons(data);
+                updateChart(data);
+            } catch (err) {
+                errorBox.textContent = err.message;
+                errorBox.classList.remove("hidden");
+            } finally {
+                analyzeBtn.disabled = false;
+                analyzeBtn.textContent = "Phân tích";
+            }
+        });
+    </script>
+</body>
+
+</html>

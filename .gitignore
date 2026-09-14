@@ -1,0 +1,33 @@
+# Python cache/build
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Runtime and local artifacts
+artifacts/
+Dataset.csv
+ML.rar
+
+# Optional heavy outputs (uncomment if needed)
+# artifacts/benchmark*/
+# artifacts/report/
+
+# Logs and temp
+*.log
+*.tmp
+*.bak
