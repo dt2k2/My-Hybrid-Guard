@@ -1,33 +1,82 @@
-# Python cache/build
+# ==========================================
+# Python cache & build
+# ==========================================
 __pycache__/
 *.py[cod]
+*$py.class
 *.pyo
 *.pyd
 *.so
+build/
+dist/
+*.egg-info/
+.eggs/
 .pytest_cache/
 .mypy_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
 
+# ==========================================
 # Virtual environments
+# ==========================================
 .venv/
 venv/
 env/
+ENV/
 
-# IDE/OS
+# ==========================================
+# Environment variables & Secrets
+# ==========================================
+.env
+.env.*
+*.env
+*.pem
+*.key
+
+# ==========================================
+# IDE & OS specific
+# ==========================================
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+desktop.ini
+ehthumbs.db
+*.swp
+*.swo
+*~
 
-# Runtime and local artifacts
-artifacts/
+# ==========================================
+# Large datasets & archives (tránh vượt quota GitHub)
+# ==========================================
 Dataset.csv
-ML.rar
+*.csv
+*.tsv
+*.parquet
+*.rar
+*.zip
+*.7z
+*.tar.gz
+data/
+datasets/
 
-# Optional heavy outputs (uncomment if needed)
-# artifacts/benchmark*/
-# artifacts/report/
+# ==========================================
+# ML Models & Runtime artifacts
+# ==========================================
+artifacts/
+*.joblib
+*.pkl
+*.pickle
+*.pt
+*.pth
+*.onnx
+*.weights
+*.h5
 
-# Logs and temp
+# ==========================================
+# Logs & Temporary files
+# ==========================================
 *.log
 *.tmp
 *.bak
