@@ -3,11 +3,27 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parents[2]
 ARTIFACTS_DIR = BASE_DIR / "artifacts"
 
-MODEL_PATH = ARTIFACTS_DIR / "url_phishing_model.joblib"
+def _resolve_model_path(*candidates: Path) -> Path:
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+MODEL_PATH = _resolve_model_path(
+    ARTIFACTS_DIR / "rf_final" / "url_phishing_model.joblib",
+    ARTIFACTS_DIR / "url_phishing_model.joblib",
+)
 CACHE_PATH = ARTIFACTS_DIR / "web_external_cache.json"
 
-DL_MODEL_PATH = ARTIFACTS_DIR / "dl_smoke" / "url_phishing_model.joblib"
-DT_MODEL_PATH = ARTIFACTS_DIR / "dt_model" / "url_phishing_model.joblib"
+DL_MODEL_PATH = _resolve_model_path(
+    ARTIFACTS_DIR / "dl_final" / "url_phishing_model.joblib",
+    ARTIFACTS_DIR / "dl_smoke" / "url_phishing_model.joblib",
+)
+DT_MODEL_PATH = _resolve_model_path(
+    ARTIFACTS_DIR / "dt_final" / "url_phishing_model.joblib",
+    ARTIFACTS_DIR / "dt_model" / "url_phishing_model.joblib",
+)
 
 MODEL_PATHS = {
     "rf": MODEL_PATH,

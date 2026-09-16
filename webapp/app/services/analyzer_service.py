@@ -1,6 +1,4 @@
-from urllib.parse import urlparse
-
-from url_ml.feature_engineering import normalize_url
+from url_ml.feature_engineering import normalize_url, safe_urlparse
 from webapp.app.config import (
     DEFAULT_CACHE_HOURS,
     DEFAULT_MAX_CONTENT_BYTES,
@@ -22,7 +20,7 @@ from webapp.app.services.external_checks import collect_dns, collect_domain_age,
 
 def _canonicalize_root_url(raw_url: str) -> str:
     normalized = normalize_url(raw_url)
-    parsed = urlparse(normalized)
+    parsed = safe_urlparse(normalized)
     if parsed.scheme and parsed.netloc and parsed.path == "":
         return f"{parsed.scheme}://{parsed.netloc}/"
     return normalized
@@ -38,8 +36,11 @@ class UrlAnalyzerService:
         canonical_input = _canonicalize_root_url(raw_url)
         features, predicted_class, base_probability = self.model_service.predict(canonical_input)
         normalized_url = normalize_url(canonical_input)
-        parsed = urlparse(normalized_url)
-        hostname = (parsed.hostname or "").lower()
+        parsed = safe_urlparse(normalized_url)
+        try:
+            hostname = (parsed.hostname or "").lower()
+        except ValueError:
+            hostname = (parsed.netloc or "").split(":")[0].lower()
         tld = str(features.get("tld", "")).lower().strip(".")
 
         triggers = detect_triggers(raw_url, features)

@@ -15,7 +15,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data", default="Dataset.csv", help="Path to labeled CSV dataset.")
     parser.add_argument("--url-col", default="url", help="URL column name.")
     parser.add_argument("--label-col", default="label", help="Label column name.")
-    parser.add_argument("--model-path", default="artifacts/url_phishing_model.joblib", help="Trained model artifact path.")
+    default_model = (
+        "artifacts/rf_final/url_phishing_model.joblib"
+        if Path("artifacts/rf_final/url_phishing_model.joblib").exists()
+        else "artifacts/url_phishing_model.joblib"
+    )
+    parser.add_argument("--model-path", default=default_model, help="Trained model artifact path.")
     parser.add_argument("--mode", choices=["ml", "hybrid"], default="ml", help="ml: model-only, hybrid: full analyzer.")
     parser.add_argument("--sample-size", type=int, default=0, help="Optional number of rows to evaluate.")
     parser.add_argument("--random-state", type=int, default=42, help="Random seed for sampling.")
@@ -108,7 +113,11 @@ def run_hybrid_mode(dataframe: pd.DataFrame, args: argparse.Namespace) -> pd.Dat
     from webapp.app.services.cache_store import JsonCacheStore
     from webapp.app.services.model_service import ModelService
 
-    analyzer = UrlAnalyzerService(model_service=ModelService(MODEL_PATH), cache_store=JsonCacheStore(CACHE_PATH))
+    model_path = Path(args.model_path)
+    if not model_path.exists():
+        model_path = MODEL_PATH
+
+    analyzer = UrlAnalyzerService(model_service=ModelService(model_path), cache_store=JsonCacheStore(CACHE_PATH))
 
     records = []
     for index, row in dataframe.iterrows():

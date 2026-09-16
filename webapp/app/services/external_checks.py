@@ -217,7 +217,7 @@ def collect_domain_age(hostname: str, timeout: int, cache, no_cache: bool = Fals
             if action in {"expiration", "expired", "expiration date"} and result["expires_at"] is None:
                 result["expires_at"] = event_time.isoformat()
                 result["days_until_expiration"] = int((event_time - now).total_seconds() // 86400)
-    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
+    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError, OSError, Exception) as exc:
         result["error"] = str(exc)
 
     cache.set(cache_key, dict(result))
@@ -338,7 +338,7 @@ def collect_http(url: str, timeout: int, max_content_bytes: int, cache, ttl_hour
                 result.update(_extract_content_signals(payload))
                 if result["error"]:
                     result["error"] = f"{result['error']} | fallback=urllib:ok"
-        except (HTTPError, URLError, TimeoutError) as exc:
+        except (HTTPError, URLError, TimeoutError, OSError, Exception) as exc:
             if result["error"]:
                 result["error"] = f"{result['error']} | fallback=urllib:{_format_network_exception(exc)}"
             else:
